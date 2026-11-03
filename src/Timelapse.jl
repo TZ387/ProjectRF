@@ -15,85 +15,43 @@ using ..Plotting: plot_slices
 
 export run_heat_timelapse
 
-# ── Snapshot carried through the channel ─────────────────────────────────────
-
-struct PlotSnapshot
-    T     :: Array{Float64,3}  # full temperature field, copied on worker thread
-    t_sim :: Float64            # simulation time [s]
-    label :: String
-    T_min :: Float64
-    T_max :: Float64
-end
-
-# ── Main entry point ──────────────────────────────────────────────────────────
-
 """
     run_heat_timelapse(Qel, heat_params, grid_params; use_gpu = false)
 
-Run the multi-phase heat simulation on a worker thread while displaying a
-live-updating 3D volumeslices plot (with X/Y/Z sliders) on the main thread.
-
-The window stays fully responsive because the main thread never blocks on
-the solver — it only services the GLMakie event loop and drains a Channel
-of plot snapshots produced by the worker.
+Run the heat schedule while showing the temperature field in a live 3D slice plot. The colour
+range follows the data unless both `T_plot_min` and `T_plot_max` are set.
 """
-function run_heat_timelapse(Qel::Array{Float64,3},
-                            heat_params::Config.HeatParams,
-                            grid_params::Config.GridParams;
+function run_heat_timelapse(Qel::Array{Float64,3}, heat_params::Config.HeatParams, grid_params::Config.GridParams;
                             use_gpu::Bool = false)
+    T0     = heat_params.T_initial
+    fixed  = heat_params.T_plot_min !== nothing && heat_params.T_plot_max !== nothing
+    field  = Observable(T0)
+    crange = Observable(fixed ? (heat_params.T_plot_min, heat_params.T_plot_max) : (minimum(T0), maximum(T0) + 1.0))
+    title  = Observable("t = 0.00 s")
+    display(plot_slices(field, grid_params; title, colormap = :thermal, colorrange = crange,
+                        ticks = GLMakie.Makie.automatic, label = "Temperature [°C]"))
 
-    # ── Channel ───────────────────────────────────────────────────────────────
-    # Capacity 4: small buffer so the worker is never held up long waiting for
-    # the main thread to drain, but also doesn't queue stale frames.
-    snapshot_ch = Channel{PlotSnapshot}(4)
+    # A small buffer, so the worker rarely waits for the plot but no stale frames queue up
+    snapshots = Channel(4)
+    sim_task  = Threads.@spawn HeatSolver.solve_heat_schedule(Qel, heat_params, grid_params; use_gpu,
+                    update_cb = (T, t, label) -> put!(snapshots, (Array(T), t, label)))  # a copy, as the solver reuses T
+    bind(snapshots, sim_task)  # closes the channel when the worker finishes or fails
 
-    # ── Build the Makie scene on the main thread ──────────────────────────────
-    T0 = heat_params.T_initial
-
-    # Fixed limits when the user supplied both T_plot_min and T_plot_max;
-    # otherwise fall back to auto-ranging from the live data.
-    fixed_crange = heat_params.T_plot_min !== nothing &&
-                   heat_params.T_plot_max !== nothing
-    init_cmin = fixed_crange ? heat_params.T_plot_min : minimum(T0)
-    init_cmax = fixed_crange ? heat_params.T_plot_max : maximum(T0) + 1.0
-
-    vol_obs    = Observable(T0)
-    crange_obs = Observable((init_cmin, init_cmax))
-    title_obs  = Observable("t = 0.00 s")
-
-    display(plot_slices(vol_obs, grid_params; title = title_obs, colormap = :thermal,
-                        colorrange = crange_obs, ticks = GLMakie.Makie.automatic, label = "Temperature [°C]"))
-
-    # ── Worker thread ─────────────────────────────────────────────────────────
-    sim_task = Threads.@spawn HeatSolver.solve_heat_schedule(Qel, heat_params, grid_params; use_gpu,
-                update_cb = (T_curr, t_sim, label) -> begin
-                    T_snap     = Array(T_curr)      # CPU copy on worker thread — safe
-                    Tmin, Tmax = extrema(T_snap)
-                    Tmax       = Tmax ≈ Tmin ? Tmin + 1.0 : Tmax
-                    put!(snapshot_ch, PlotSnapshot(T_snap, t_sim, label, Tmin, Tmax))
-                end)
-    bind(snapshot_ch, sim_task)  # closes the channel when the worker finishes or fails
-
-    # ── Main thread polling loop ──────────────────────────────────────────────
-    # Runs until the channel is closed and drained; isopen is checked before isready, so
-    # snapshots queued before the close are still shown.
-    # sleep(0.05) is the key: it yields to the GLMakie event loop every 50 ms,
-    # which is more than enough for a responsive window.
-    while isopen(snapshot_ch) || isready(snapshot_ch)
-        # Drain everything currently queued before sleeping
-        while isready(snapshot_ch)
-            snap = take!(snapshot_ch)
-            vol_obs[]   = snap.T           # update the full 3D field
-            if !fixed_crange
-                crange_obs[] = (snap.T_min, snap.T_max)
+    # isopen before isready, so snapshots queued before the close are still shown;
+    # sleep yields to the GLMakie event loop
+    while isopen(snapshots) || isready(snapshots)
+        while isready(snapshots)
+            T, t, label = take!(snapshots)
+            field[] = T
+            if !fixed
+                Tmin, Tmax = extrema(T)
+                crange[] = (Tmin, Tmax ≈ Tmin ? Tmin + 1.0 : Tmax)
             end
-            title_obs[] = @sprintf("t = %.2f s  [%s]", snap.t_sim, snap.label)
+            title[] = @sprintf("t = %.2f s  [%s]", t, label)
         end
         sleep(0.05)
     end
-
-    # Re-throw any exception that occurred on the worker, and return T_final.
-    return fetch(sim_task)
+    return fetch(sim_task)  # rethrows an error from the worker
 end
 
 end # module Timelapse
