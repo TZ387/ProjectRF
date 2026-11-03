@@ -28,7 +28,7 @@ end
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 """
-    run_heat_timelapse(Qel, heat_params, grid_params; backend)
+    run_heat_timelapse(Qel, heat_params, grid_params; use_gpu = false)
 
 Run the multi-phase heat simulation on a worker thread while displaying a
 live-updating 3D volumeslices plot (with X/Y/Z sliders) on the main thread.
@@ -40,7 +40,7 @@ of plot snapshots produced by the worker.
 function run_heat_timelapse(Qel::Array{Float64,3},
                             heat_params::Config.HeatParams,
                             grid_params::Config.GridParams;
-                            backend = HeatSolver.CPUBackend())
+                            use_gpu::Bool = false)
 
     # ── Channel ───────────────────────────────────────────────────────────────
     # Capacity 4: small buffer so the worker is never held up long waiting for
@@ -65,7 +65,7 @@ function run_heat_timelapse(Qel::Array{Float64,3},
                         colorrange = crange_obs, ticks = GLMakie.Makie.automatic, label = "Temperature [°C]"))
 
     # ── Worker thread ─────────────────────────────────────────────────────────
-    sim_task = Threads.@spawn HeatSolver.solve_heat_schedule(Qel, heat_params, grid_params; backend,
+    sim_task = Threads.@spawn HeatSolver.solve_heat_schedule(Qel, heat_params, grid_params; use_gpu,
                 update_cb = (T_curr, t_sim, label) -> begin
                     T_snap     = Array(T_curr)      # CPU copy on worker thread — safe
                     Tmin, Tmax = extrema(T_snap)

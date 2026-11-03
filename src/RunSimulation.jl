@@ -32,15 +32,14 @@ function run_heat_simulation(Qel, grid_params, heat_params;
                         create_timelapse::Bool = false, use_gpu::Bool = false)
 
     check_gpu(use_gpu)
-    backend = use_gpu ? HeatSolver.CUDABackend() : HeatSolver.CPUBackend()
 
     if create_timelapse
         @info "Running heat simulation with live plot..."
-        return Timelapse.run_heat_timelapse(Qel, heat_params, grid_params; backend)
+        return Timelapse.run_heat_timelapse(Qel, heat_params, grid_params; use_gpu)
     end
 
     @info "Running heat simulation (no live plot)..."
-    return HeatSolver.solve_heat_schedule(Qel, heat_params, grid_params; backend)
+    return HeatSolver.solve_heat_schedule(Qel, heat_params, grid_params; use_gpu)
 end
 
 end  # module RunSimulation

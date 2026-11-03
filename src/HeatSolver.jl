@@ -4,7 +4,7 @@
 # (README, Section 1.2).
 #
 # During the live plot the solver runs inside a Threads.@spawn task, where Threads.@threads
-# deadlocks, so heat_step! spawns one task per chunk of z-slices instead. With CUDABackend()
+# deadlocks, so heat_step! spawns one task per chunk of z-slices instead. With use_gpu = true
 # the arrays move to the GPU and every cell is updated in its own GPU thread.
 
 module HeatSolver
@@ -13,17 +13,6 @@ using CUDA
 using ..Config
 
 export compute_stable_dt, solve_heat_phase
-
-# ── Backend abstraction ───────────────────────────────────────────────────────
-
-struct CPUBackend end
-struct CUDABackend end
-
-Base.show(io::IO, ::CPUBackend) = print(io, Threads.nthreads(), " CPU threads")
-Base.show(io::IO, ::CUDABackend) = print(io, "GPU")
-
-device_array(::CPUBackend, A) = A
-device_array(::CUDABackend, A) = CuArray(A)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -100,32 +89,27 @@ end
 # ── Parallel kernel (CPU) ─────────────────────────────────────────────────────
 # One task per chunk of z-slices; each writes its own slices of Tn, so no locks are needed.
 
-function heat_step!(Tn::Array{Float64,3},
-                    T::Array{Float64,3},
-                    Q::Array{Float64,3},
-                    c::Array{Float64,3},
-                    kx, ky, kz,
-                    ::CPUBackend)
+function heat_step!(Tn, T, Q, c, kx, ky, kz)
     nz = size(T, 3)
     @sync for ls in Iterators.partition(1:nz, cld(nz, Threads.nthreads()))
         Threads.@spawn _step_slices!(Tn, T, Q, c, kx, ky, kz, ls)
     end
 end
 
-heat_step!(Tn::CuArray, T, Q, c, kx, ky, kz, ::CUDABackend) =
+heat_step!(Tn::CuArray, T, Q, c, kx, ky, kz) =
     @cuda threads = 256 blocks = cld(length(T), 256) heat_kernel!(Tn, T, Q, c, kx, ky, kz)
 
 # ── Phase solver ──────────────────────────────────────────────────────────────
 
 """
     solve_heat_phase(T_in, Q_source, heat_params, grid_params, t_phase;
-                     n_update=0, update_cb=nothing, backend=CPUBackend()) -> T
+                     n_update=0, update_cb=nothing, use_gpu=false) -> T
 
 Advance the temperature field over `t_phase` seconds with source `Q_source`.
 
-`backend` selects the compute backend: `CPUBackend()` (the default), which uses
-all Julia threads, or `CUDABackend()`. The returned field is always a CPU array;
-`update_cb` receives the field on the backend's device.
+With `use_gpu = true` the time stepping runs on the GPU, otherwise on all Julia
+threads. The returned field is always a CPU array; `update_cb` receives the field
+on the device it was computed on.
 """
 function solve_heat_phase(T_in::Array{Float64,3},
                           Q_source::Array{Float64,3},
@@ -134,9 +118,10 @@ function solve_heat_phase(T_in::Array{Float64,3},
                           t_phase::Float64;
                           n_update::Int  = 0,
                           update_cb      = nothing,
-                          backend        = CPUBackend())
+                          use_gpu::Bool  = false)
 
-    T  = device_array(backend, copy(T_in))
+    to_device(A) = use_gpu ? CuArray(A) : A
+    T  = to_device(copy(T_in))
     Tn = similar(T)
 
     kx, ky, kz = face_conductances(heat_params.k, grid_params)
@@ -146,12 +131,12 @@ function solve_heat_phase(T_in::Array{Float64,3},
     Δt        = t_phase / num_steps
     c         = Δt ./ heat_params.VHC
 
-    Q, c, kx, ky, kz = map(A -> device_array(backend, A), (Q_source, c, kx, ky, kz))
+    Q, c, kx, ky, kz = to_device.((Q_source, c, kx, ky, kz))
 
     @info "Heat phase: t_phase=$(t_phase) s, " *
           "Δt=$(round(Δt; sigdigits=4)) s, " *
           "steps=$num_steps, " *
-          "on $backend"
+          "on $(use_gpu ? "GPU" : "$(Threads.nthreads()) CPU threads")"
 
     update_steps = Set{Int}()
     if n_update > 0 && update_cb !== nothing
@@ -162,7 +147,7 @@ function solve_heat_phase(T_in::Array{Float64,3},
 
     t = 0.0
     for step in 1:num_steps
-        heat_step!(Tn, T, Q, c, kx, ky, kz, backend)
+        heat_step!(Tn, T, Q, c, kx, ky, kz)
         T, Tn = Tn, T
         t += Δt
         if step in update_steps
@@ -177,7 +162,7 @@ end
 
 # Run every phase of the schedule in turn, with rf_factor·Qel + Q_extra as the source.
 # update_cb(T, t, label), if given, is called n_update times per phase.
-function solve_heat_schedule(Qel, heat_params, grid_params; update_cb = nothing, backend = CPUBackend())
+function solve_heat_schedule(Qel, heat_params, grid_params; update_cb = nothing, use_gpu = false)
     T         = heat_params.T_initial
     t_elapsed = 0.0
 
@@ -191,7 +176,7 @@ function solve_heat_schedule(Qel, heat_params, grid_params; update_cb = nothing,
                 (T_curr, t_local) -> update_cb(T_curr, t_off + t_local, label)
 
         T = solve_heat_phase(T, Q, heat_params, grid_params, phase.duration;
-                             n_update = heat_params.n_update, update_cb = cb, backend)
+                             n_update = heat_params.n_update, update_cb = cb, use_gpu)
 
         @info "Phase $phase_idx complete.  Peak T = $(round(maximum(T); digits=2)) °C"
         t_elapsed += phase.duration
