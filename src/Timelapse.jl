@@ -45,8 +45,7 @@ function run_heat_timelapse(Qel::Array{Float64,3},
     # ── Channel ───────────────────────────────────────────────────────────────
     # Capacity 4: small buffer so the worker is never held up long waiting for
     # the main thread to drain, but also doesn't queue stale frames.
-    # Nothing (::Nothing) is the sentinel that signals simulation is done.
-    snapshot_ch = Channel{Union{PlotSnapshot, Nothing}}(4)
+    snapshot_ch = Channel{PlotSnapshot}(4)
 
     # ── Build the Makie scene on the main thread ──────────────────────────────
     T0 = heat_params.T_initial
@@ -66,32 +65,24 @@ function run_heat_timelapse(Qel::Array{Float64,3},
                         colorrange = crange_obs, ticks = GLMakie.Makie.automatic, label = "Temperature [°C]"))
 
     # ── Worker thread ─────────────────────────────────────────────────────────
-    sim_task = Threads.@spawn begin
-        T = HeatSolver.solve_heat_schedule(Qel, heat_params, grid_params; backend,
+    sim_task = Threads.@spawn HeatSolver.solve_heat_schedule(Qel, heat_params, grid_params; backend,
                 update_cb = (T_curr, t_sim, label) -> begin
                     T_snap     = Array(T_curr)      # CPU copy on worker thread — safe
                     Tmin, Tmax = extrema(T_snap)
                     Tmax       = Tmax ≈ Tmin ? Tmin + 1.0 : Tmax
                     put!(snapshot_ch, PlotSnapshot(T_snap, t_sim, label, Tmin, Tmax))
                 end)
-
-        put!(snapshot_ch, nothing)  # sentinel: tell main thread we are done
-        return T
-    end
+    bind(snapshot_ch, sim_task)  # closes the channel when the worker finishes or fails
 
     # ── Main thread polling loop ──────────────────────────────────────────────
-    # Runs until the worker sends the nothing sentinel.
+    # Runs until the channel is closed and drained; isopen is checked before isready, so
+    # snapshots queued before the close are still shown.
     # sleep(0.05) is the key: it yields to the GLMakie event loop every 50 ms,
     # which is more than enough for a responsive window.
-    done = false
-    while !done
+    while isopen(snapshot_ch) || isready(snapshot_ch)
         # Drain everything currently queued before sleeping
         while isready(snapshot_ch)
             snap = take!(snapshot_ch)
-            if snap === nothing
-                done = true
-                break
-            end
             vol_obs[]   = snap.T           # update the full 3D field
             if !fixed_crange
                 crange_obs[] = (snap.T_min, snap.T_max)

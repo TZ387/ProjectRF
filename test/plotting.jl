@@ -14,3 +14,14 @@ GLMakie.activate!(visible = false)
         @test all(isfile(joinpath(dir, "plot_$c.png")) for c in 'a':'e')
     end
 end
+
+@testset "live heat plot" begin
+    gp = GridParams(0.01, 0.01, 0.01, 4, 4, 4)
+    Qel = [1e5 * l for i in 1:4, j in 1:4, l in 1:4]
+    heat_params(phase) = HeatParams([phase, HeatPhase(duration = 5.0)], 2, fill(37.0, 4, 4, 4), fill(1e6, 4, 4, 4), fill(0.5, 4, 4, 4))
+    hp = heat_params(HeatPhase(duration = 10.0, rf_factor = 1.0))
+    T = @test_logs min_level = Logging.Warn run_heat_simulation(Qel, gp, hp; create_timelapse = true)
+    @test T == run_heat_simulation(Qel, gp, hp)
+    # A solver error reaches the caller instead of leaving the plot waiting
+    @test_throws TaskFailedException run_heat_simulation(Qel, gp, heat_params(HeatPhase(duration = 10.0, rf_factor = ones(3, 3, 3))); create_timelapse = true)
+end
