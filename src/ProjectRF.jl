@@ -1,4 +1,4 @@
-module prrf
+module ProjectRF
 
 include("Config.jl")
 include("GridSetup.jl")

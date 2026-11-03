@@ -1,5 +1,5 @@
 # Include the main module - this loads all submodules
-using prrf
+using ProjectRF
 
 # Geometry definition function
 function geometryDefinition(grid_params::GridParams)

@@ -1,4 +1,4 @@
-# prrf
+# ProjectRF
 
 A program for RF heating simulation in biological tissue. Given an arbitrary electrode geometry and boundary conditions, it computes the electric potential, electric field, and heat dissipation in the tissue, and then uses that dissipation as a source term to evolve the temperature field over time.
 
@@ -12,8 +12,8 @@ A program for RF heating simulation in biological tissue. Given an arbitrary ele
 1. Download the code and enter its folder:
 
    ```
-   git clone https://github.com/TZ387/prrf.git
-   cd prrf
+   git clone https://github.com/TZ387/ProjectRF.git
+   cd ProjectRF
    ```
 
 2. Start Julia in this folder, either normally with `julia`, or with `julia --threads auto` to use all CPU threads ([Enabling multiple threads](#enabling-multiple-threads)).

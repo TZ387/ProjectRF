@@ -2,7 +2,7 @@
 
 julia_version = "1.13.2"
 manifest_format = "2.1"
-project_hash = "5330f5efa6a0a51c2061decf5861eb1f674af2e6"
+project_hash = "fd257e498de1f849ce2d3e98b5314e86f0a8a538"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -1792,6 +1792,12 @@ version = "1.13.0"
     Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
     IJulia = "7073ff75-c697-5162-941a-fcdaad2a7d2a"
 
+[[deps.ProjectRF]]
+deps = ["CUDA", "Ferrite", "GLMakie", "HDF5", "LinearAlgebra", "Printf", "StaticArrays"]
+path = "."
+uuid = "b5d11546-cacb-4622-8a6b-042bba915b18"
+version = "0.1.0"
+
 [[deps.PtrArrays]]
 git-tree-sha1 = "4fbbafbc6251b883f4d2705356f3641f3652a7fe"
 registries = "General"
@@ -2703,12 +2709,6 @@ git-tree-sha1 = "46eba5d14220db916c7152532a198e22d0268d90"
 registries = "General"
 uuid = "54f56a70-6062-5590-a942-1226658f6c83"
 version = "7.2.3+2"
-
-[[deps.prrf]]
-deps = ["CUDA", "Ferrite", "GLMakie", "HDF5", "LinearAlgebra", "Printf", "StaticArrays"]
-path = "."
-uuid = "b5d11546-cacb-4622-8a6b-042bba915b18"
-version = "0.1.0"
 
 [[deps.s2n_tls_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]

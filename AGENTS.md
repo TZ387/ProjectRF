@@ -4,11 +4,11 @@ Instructions for AI coding agents working in this repository.
 
 ## Project
 
-`prrf` is a Julia package (Julia ≥ 1.12) for simulating RF heating in biological tissue. It solves for the electric potential on a 3D voxel grid, derives the electric field and the heat source `Qel`, and then evolves the temperature field over time. Theory and usage are in [README.md](README.md).
+`ProjectRF` is a Julia package (Julia ≥ 1.12) for simulating RF heating in biological tissue. It solves for the electric potential on a 3D voxel grid, derives the electric field and the heat source `Qel`, and then evolves the temperature field over time. Theory and usage are in [README.md](README.md).
 
 ## Layout
 
-- `src/prrf.jl` — top-level module. Includes the submodules and re-exports the public API; a new public function must be exported from its submodule and from here.
+- `src/ProjectRF.jl` — top-level module. Includes the submodules and re-exports the public API; a new public function must be exported from its submodule and from here.
 - `src/Config.jl` — `GridParams`, `RFParams`, `HeatPhase`, `HeatParams`, material property setup, coordinate grids.
 - `src/GridSetup.jl` — Ferrite hexahedral grid.
 - `src/RFSolver.jl` — RF potential solve (matrix-free Jacobi-preconditioned COCG, on the CPU or a CUDA GPU) and field calculation.
@@ -47,7 +47,7 @@ The scripts in `Examples/` are meant for end users to open and change settings i
 
 ```bash
 julia --project=. -e 'using Pkg; Pkg.instantiate()'    # install dependencies
-julia --project=. -e 'using prrf'                      # check that the package loads
+julia --project=. -e 'using ProjectRF'                 # check that the package loads
 julia --project=. -e 'using Pkg; Pkg.test()'           # run the tests
 julia --project=. --threads auto Examples/Example1.jl  # run an example
 ```

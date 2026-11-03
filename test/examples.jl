@@ -1,7 +1,7 @@
 using Ferrite: get_node_coordinate
 using GLMakie: GLMakie
 
-const EXAMPLES = joinpath(pkgdir(prrf), "Examples")
+const EXAMPLES = joinpath(pkgdir(ProjectRF), "Examples")
 
 GLMakie.activate!(visible = false)  # Examples 7 and 8 create a GLMakie.Screen themselves
 
@@ -9,7 +9,7 @@ GLMakie.activate!(visible = false)  # Examples 7 and 8 create a GLMakie.Screen t
 # are replaced by stubs that record what the example passes to them.
 function run_example(file)
     m = Module()
-    Core.eval(m, :(using prrf))
+    Core.eval(m, :(using ProjectRF))
     Core.eval(m, quote
         const recorded = Dict{Symbol, Any}()
         run_simulation(gp, rf, bc; kwargs...) = (recorded[:rf] = (; gp, rf, bc); (nothing, nothing, zero(rf.sigma), nothing, nothing, nothing))
